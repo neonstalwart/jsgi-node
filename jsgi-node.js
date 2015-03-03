@@ -1,7 +1,7 @@
 /*
 JSGI 0.3 Adapter for Node
 
-To use provide a JSGI application (can be application stack) to the start 
+To use provide a JSGI application (can be application stack) to the start
 function:
 
 		require("jsgi-node").start(function(request){
@@ -14,7 +14,7 @@ function:
 			});
 		});
 
-This adapter should conform to the JSGI 0.3 (with promises) for full 
+This adapter should conform to the JSGI 0.3 (with promises) for full
 asynchronous support. For example:
 
 		var fs = require("promised-io/fs");
@@ -51,7 +51,7 @@ function Request( request ) {
 	if(this.method != "GET"){ // optimize GET
 		this.body = new Input( request );
 	}
-	
+
 }
 
 Request.prototype = {
@@ -89,21 +89,23 @@ Request.prototype = {
 
 
 function Input( request ) {
-	var 
+	var
 		inputBuffer = [],
 		waitingForLength = Infinity;
 	function callback(data){
-		inputBuffer.push(data);	
+		inputBuffer.push(data);
 	}
 	var deferred = defer();
+	function listener(data) {
+		callback(data);
+	}
 	request
-			.addListener( "data", function( data ) {
-				 callback(data);
-			})
-			.addListener( "end", function() {
+			.addListener( "data", listener)
+			.once( "end", function() {
 				deferred.resolve();
+				request.removeListener( "data", listener);
 			});
-	
+
 	this.forEach = function (each) {
 		if (this.encoding) {
 			request.setBodyEncoding( this.encoding );
@@ -209,7 +211,7 @@ function Response( response, stream ) {
 			}catch(e3){
 				sys.puts(e3.stack);
 			}
-		}		
+		}
 	}
 }
 
@@ -227,7 +229,7 @@ function Listener( app ) {
 				jsgiResponse = app( request )
 			} catch( error ) {
 				jsgiResponse = { status:500, headers:{}, body:[error.stack] };
-			}			
+			}
 			respond( jsgiResponse );
 		});
 	}
@@ -239,10 +241,10 @@ start.start = start;
 function start( app, options ) {
 	app = new Listener( app );
 	options = options || {};
-	
+
 	var port = options.port || 8080,
 			http;
-	
+
 	if ( options.ssl ) {
 		http = require( "https" ).createServer( options.ssl, app ).listen( port );
 	} else {
@@ -250,6 +252,6 @@ function start( app, options ) {
 	}
 
 	sys.puts( "Server running on port " + port );
-	return http; 
+	return http;
 };
 module.exports = start;
