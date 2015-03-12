@@ -32,7 +32,9 @@ asynchronous support. For example:
 var
 	sys = require( "sys" ),
 	url = require( "url" ),
-	defer = require("./promise").defer;
+	promise = require("./promise"),
+	defer = promise.defer,
+	when = promise.when;
 
 function Request( request ) {
 	var url = request.url;
@@ -126,21 +128,13 @@ Input.prototype.join = function(token){
 }
 
 function Response( response, stream ) {
-	var started = false, canceller, cancel;
+	var started = false;
+
 	return handle;
 
 	function handle( data, notDone ) {
 		var forEachResult;
 		if ( typeof data.then === "function" ) {
-			if(!canceller){
-				stream.removeAllListeners("close");
-				canceller = function(){
-					stream.removeListener("close", canceller);
-					cancel && cancel();
-				}
-				stream.addListener("close", canceller);
-			}
-			cancel = data.cancel;
 			data.then(
 				handle,
 				function( error ) {
@@ -154,6 +148,7 @@ function Response( response, stream ) {
 
 			return;
 		}
+
 		if ( !started ) {
 			started = true;
 			response.writeHead( data.status || 500, data.headers );
@@ -177,27 +172,17 @@ function Response( response, stream ) {
 			}
 
 			if ( !notDone && forEachResult && ( typeof forEachResult.then === "function" ) ) {
-				cancel = forEachResult.cancel;
-				forEachResult.then( function() {
-					if(canceller){
-						stream.addListener("close", canceller);
-					}
+				forEachResult.then( function(result) {
 					response.end();
 				});
 			}
 
 			else if ( !notDone ) {
-				if(canceller){
-					stream.addListener("close", canceller);
-				}
 				response.end();
 			}
 		}
 
 		catch( e ) {
-			if(canceller){
-				stream.addListener("close", canceller);
-			}
 			try{
 				// if it is not too late, set the status
 				if(!response.statusCode){
@@ -219,14 +204,19 @@ function Listener( app ) {
 	if(typeof app != "function"){
 		throw new Error("app must be a function");
 	}
-	return function( request, response ) {
-		var connection = request.connection;
-		request = new Request( request );
-		var respond = new Response( response, connection );
+	return function( _request, _response ) {
+		var connection = _request.connection;
+		var request = new Request( _request );
+		var respond = new Response( _response, connection );
 		process.nextTick(function(){
 			var jsgiResponse;
 			try {
 				jsgiResponse = app( request )
+				when(jsgiResponse, function (response) {
+					if (response.onClose) {
+						_request.once("close", response.onClose);
+					}
+				});
 			} catch( error ) {
 				jsgiResponse = { status:500, headers:{}, body:[error.stack] };
 			}
